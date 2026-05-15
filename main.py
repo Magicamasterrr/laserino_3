@@ -243,3 +243,52 @@ ABI_MIN: List[Dict[str, Any]] = [
         "stateMutability": "view",
         "type": "function",
     },
+    {
+        "inputs": [],
+        "name": "totalMinted",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "circulatingSupply",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "totalSupply",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"internalType": "uint256", "name": "index", "type": "uint256"}],
+        "name": "tokenByIndex",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+]
+
+
+def rpc_call(url: str, method: str, params: Any, timeout_s: float) -> Any:
+    client = HttpJsonClient(timeout_s)
+    payload = {"jsonrpc": "2.0", "id": secrets.randbelow(1_000_000), "method": method, "params": params}
+    resp = client.post_json(url, payload)
+    if "error" in resp:
+        raise RuntimeError(str(resp["error"]))
+    return resp["result"]
+
+
+def eth_call_contract(url: str, to: str, data: str, timeout_s: float) -> bytes:
+    res = rpc_call(url, "eth_call", [{"to": to, "data": data}, "latest"], timeout_s)
+    hx = res.removeprefix("0x")
+    if hx == "":
+        return b""
+    return bytes.fromhex(hx)
+
+
+def selector(sig: str) -> bytes:
