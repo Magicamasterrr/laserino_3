@@ -145,3 +145,52 @@ class StructuredLogger:
 
 class RingBuffer:
     def __init__(self, capacity: int) -> None:
+        self._cap = max(1, capacity)
+        self._buf: Deque[Any] = deque(maxlen=self._cap)
+
+    def push(self, item: Any) -> None:
+        self._buf.append(item)
+
+    def snapshot(self) -> List[Any]:
+        return list(self._buf)
+
+
+class ExponentialBackoff:
+    def __init__(self, base: float = 0.35, factor: float = 1.85, max_sleep: float = 28.0) -> None:
+        self.base = base
+        self.factor = factor
+        self.max_sleep = max_sleep
+        self.attempt = 0
+
+    def sleep_for_next(self) -> float:
+        self.attempt += 1
+        return min(self.max_sleep, self.base * (self.factor ** (self.attempt - 1)))
+
+    def reset(self) -> None:
+        self.attempt = 0
+
+
+def stable_json(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def hmac_tag(secret: bytes, msg: bytes) -> str:
+    return hmac.new(secret, msg, hashlib.sha256).hexdigest()
+
+
+def pick_weighted_endpoints(endpoints: Sequence[RpcEndpoint]) -> RpcEndpoint:
+    total = sum(e.weight for e in endpoints) or 1
+    r = random.uniform(0, total)
+    acc = 0.0
+    for e in endpoints:
+        acc += e.weight
+        if r <= acc:
+            return e
+    return endpoints[-1]
+
+
+class HttpJsonClient:
