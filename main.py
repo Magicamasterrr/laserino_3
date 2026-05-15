@@ -292,3 +292,52 @@ def eth_call_contract(url: str, to: str, data: str, timeout_s: float) -> bytes:
 
 
 def selector(sig: str) -> bytes:
+    return keccak256(sig.encode("ascii"))[:4]
+
+
+def encode_call(sig: str, types: Sequence[str], values: Sequence[Any]) -> str:
+    if eth_abi_encode is None:
+        raise RuntimeError("eth_abi required")
+    head = selector(sig)
+    body = eth_abi_encode(list(types), list(values))
+    return "0x" + (head + body).hex()
+
+
+def encode_export_inventory_slice_call(start: int, count: int) -> str:
+    """eth_call data for TheDivineNFT.exportInventorySlice(uint256,uint256)."""
+    if eth_abi_encode is None:
+        raise RuntimeError("eth_abi required")
+    head = selector("exportInventorySlice(uint256,uint256)")
+    body = eth_abi_encode(["uint256", "uint256"], [start, count])
+    return "0x" + (head + body).hex()
+
+
+def _read_u256_word(mem: bytes, word_index: int) -> int:
+    off = word_index * 32
+    chunk = mem[off : off + 32]
+    if len(chunk) != 32:
+        raise ValueError("short_abi_word")
+    return int.from_bytes(chunk, "big")
+
+
+def decode_uint256_array_abi(ret: bytes) -> List[int]:
+    """Decode ABI-encoded uint256[] from eth_call return bytes (dynamic array layout)."""
+    if len(ret) < 32:
+        raise ValueError("return_too_short")
+    offset = _read_u256_word(ret, 0)
+    if offset % 32 != 0:
+        raise ValueError("bad_offset_alignment")
+    start_word = offset // 32
+    if start_word >= len(ret) // 32:
+        raise ValueError("offset_out_of_range")
+    length = _read_u256_word(ret, start_word)
+    first_el = start_word + 1
+    need_words = first_el + length
+    if need_words > len(ret) // 32:
+        raise ValueError("length_out_of_range")
+    out: List[int] = []
+    for i in range(length):
+        out.append(_read_u256_word(ret, first_el + i))
+    return out
+
+
