@@ -194,3 +194,52 @@ def pick_weighted_endpoints(endpoints: Sequence[RpcEndpoint]) -> RpcEndpoint:
 
 
 class HttpJsonClient:
+    def __init__(self, timeout_s: float) -> None:
+        self.timeout_s = timeout_s
+
+    def post_json(self, url: str, body: Mapping[str, Any]) -> Any:
+        data = stable_json(body).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json", "User-Agent": "laserino_3/3"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"http_error status={e.code}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"url_error {e}") from e
+
+
+ABI_MIN: List[Dict[str, Any]] = [
+    {
+        "inputs": [],
+        "name": "DOMAIN_SEPARATOR",
+        "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
+            {"internalType": "uint256", "name": "priceWei", "type": "uint256"},
+            {"internalType": "uint256", "name": "nonce", "type": "uint256"},
+            {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+            {"internalType": "address", "name": "buyer", "type": "address"},
+        ],
+        "name": "hashOrder",
+        "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "ORDER_TYPEHASH",
+        "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
