@@ -439,3 +439,52 @@ class DivineBridge:
         supply = int(c.functions.totalSupply().call())
         out = {
             "domain_separator": dom.hex() if hasattr(dom, "hex") else Web3.to_hex(dom),
+            "minted": minted,
+            "circulating": circ,
+            "inventory": supply,
+        }
+        self.history.push(out)
+        return out
+
+    def _snapshot_metrics_raw(self) -> Dict[str, Any]:
+        url = self._rpc_url()
+        to = self.cfg.contract_address
+        ds = encode_call("DOMAIN_SEPARATOR()", [], [])
+        raw = eth_call_contract(url, to, ds, self.cfg.http_timeout_s)
+        out = {"domain_separator": raw.hex(), "minted": -1, "circulating": -1, "inventory": -1}
+        self.history.push(out)
+        return out
+
+    def fetch_order_typehash(self) -> bytes:
+        url = self._rpc_url()
+        to = self.cfg.contract_address
+        data = encode_call("ORDER_TYPEHASH()", [], [])
+        raw = eth_call_contract(url, to, data, self.cfg.http_timeout_s)
+        if len(raw) != 32:
+            raise RuntimeError("ORDER_TYPEHASH bad length")
+        return raw
+
+    def fetch_domain_separator(self) -> bytes:
+        url = self._rpc_url()
+        to = self.cfg.contract_address
+        data = encode_call("DOMAIN_SEPARATOR()", [], [])
+        raw = eth_call_contract(url, to, data, self.cfg.http_timeout_s)
+        if len(raw) != 32:
+            raise RuntimeError("DOMAIN_SEPARATOR bad length")
+        return raw
+
+    def hash_order_local(
+        self,
+        token_id: int,
+        price_wei: int,
+        nonce: int,
+        deadline: int,
+        buyer: str,
+    ) -> bytes:
+        oth = self.fetch_order_typehash()
+        dom = self.fetch_domain_separator()
+        struct_hash = encode_divine_order_struct(oth, token_id, price_wei, nonce, deadline, buyer)
+        return eip712_digest(dom, struct_hash)
+
+    def hash_order_chain(
+        self,
