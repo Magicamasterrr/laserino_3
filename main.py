@@ -341,3 +341,52 @@ def decode_uint256_array_abi(ret: bytes) -> List[int]:
     return out
 
 
+def decode_u256_return(ret: bytes) -> int:
+    if len(ret) < 32:
+        raise ValueError("u256_return_short")
+    return _read_u256_word(ret, 0)
+
+
+def parse_rpc_url_cli(spec: Optional[str], single_rpc: str) -> Tuple[RpcEndpoint, ...]:
+    if spec:
+        parts = [p.strip() for p in spec.split(",") if p.strip()]
+        if not parts:
+            raise ValueError("rpc_list_empty")
+        return tuple(RpcEndpoint(u, 1, f"lane{i}") for i, u in enumerate(parts))
+    return (RpcEndpoint(single_rpc, 1, "cli"),)
+
+
+def load_runtime_profile(path: Path) -> Dict[str, Any]:
+    blob = path.expanduser().read_text(encoding="utf-8")
+    data = json.loads(blob)
+    if not isinstance(data, dict):
+        raise ValueError("profile_root_must_be_object")
+    return data
+
+
+def merge_runtime_profile(
+    cfg: LaserinoConfig,
+    prof: Mapping[str, Any],
+    *,
+    rpc_list_from_cli: bool,
+) -> LaserinoConfig:
+    urls: List[RpcEndpoint] = list(cfg.rpc_urls)
+    if isinstance(prof.get("rpc_urls"), list) and not rpc_list_from_cli:
+        urls = [RpcEndpoint(str(u), 1, "json_profile") for u in prof["rpc_urls"]]
+    elif "rpc" in prof and not rpc_list_from_cli:
+        urls = [RpcEndpoint(str(prof["rpc"]), 1, "json_profile")]
+    patch: Dict[str, Any] = {"rpc_urls": tuple(urls)}
+    if "contract" in prof:
+        patch["contract_address"] = str(prof["contract"])
+    if "chain_id" in prof:
+        patch["chain_id"] = int(prof["chain_id"])
+    if "pulse_tag_seed" in prof:
+        patch["pulse_tag_seed"] = str(prof["pulse_tag_seed"])
+    if "poll_interval_s" in prof:
+        patch["poll_interval_s"] = float(prof["poll_interval_s"])
+    if "http_timeout_s" in prof:
+        patch["http_timeout_s"] = float(prof["http_timeout_s"])
+    if "max_retries" in prof:
+        patch["max_retries"] = int(prof["max_retries"])
+    return dataclasses.replace(cfg, **patch)
+
