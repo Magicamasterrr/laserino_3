@@ -390,3 +390,52 @@ def merge_runtime_profile(
         patch["max_retries"] = int(prof["max_retries"])
     return dataclasses.replace(cfg, **patch)
 
+
+def encode_sanctified_buy_with_data_call(
+    token_id: int,
+    price_wei: int,
+    deadline: int,
+    buyer: str,
+    hook_data: bytes,
+    v: int,
+    r: bytes,
+    s: bytes,
+) -> str:
+    """ABI calldata for TheDivineNFT.sanctifiedBuyWithData(uint256,uint256,uint256,address,bytes,uint8,bytes32,bytes32)."""
+    if eth_abi_encode is None:
+        raise RuntimeError("eth_abi required")
+    if len(r) != 32 or len(s) != 32:
+        raise ValueError("r_or_s_not_32_bytes")
+    if v < 0 or v > 255:
+        raise ValueError("v_byte_range")
+    buyer_a = Web3.to_checksum_address(buyer) if Web3 is not None else buyer
+    head = selector("sanctifiedBuyWithData(uint256,uint256,uint256,address,bytes,uint8,bytes32,bytes32)")
+    body = eth_abi_encode(
+        ["uint256", "uint256", "uint256", "address", "bytes", "uint8", "bytes32", "bytes32"],
+        [token_id, price_wei, deadline, buyer_a, hook_data, v, r, s],
+    )
+    return "0x" + (head + body).hex()
+
+
+class DivineBridge:
+    def __init__(self, cfg: LaserinoConfig) -> None:
+        self.cfg = cfg
+        self.http = HttpJsonClient(cfg.http_timeout_s)
+        self.slog = StructuredLogger("laserino_3.bridge")
+        self.history = RingBuffer(640)
+        self.backoff = ExponentialBackoff()
+
+    def _rpc_url(self) -> str:
+        return pick_weighted_endpoints(self.cfg.rpc_urls).url
+
+    def snapshot_metrics(self) -> Dict[str, Any]:
+        if Web3 is None:
+            return self._snapshot_metrics_raw()
+        w3 = Web3(Web3.HTTPProvider(self._rpc_url(), request_kwargs={"timeout": self.cfg.http_timeout_s}))
+        c = w3.eth.contract(address=Web3.to_checksum_address(self.cfg.contract_address), abi=ABI_MIN)
+        dom = c.functions.DOMAIN_SEPARATOR().call()
+        minted = int(c.functions.totalMinted().call())
+        circ = int(c.functions.circulatingSupply().call())
+        supply = int(c.functions.totalSupply().call())
+        out = {
+            "domain_separator": dom.hex() if hasattr(dom, "hex") else Web3.to_hex(dom),
